@@ -8,6 +8,19 @@ endif
 
 let g:loaded_tslime = 1
 
+if !exists("g:tslime_ensure_trailing_newlines")
+  let g:tslime_ensure_trailing_newlines = 0
+endif
+if !exists("g:tslime_normal_mapping")
+  let g:tslime_normal_mapping = '<c-c><c-c>'
+endif
+if !exists("g:tslime_visual_mapping")
+  let g:tslime_visual_mapping = '<c-c><c-c>'
+endif
+if !exists("g:tslime_vars_mapping")
+  let g:tslime_vars_mapping = '<c-c>v'
+endif
+
 " Function to send keys to tmux
 " useful if you want to stop some command with <c-c> in tmux.
 function! Send_keys_to_Tmux(keys)
@@ -16,12 +29,6 @@ function! Send_keys_to_Tmux(keys)
   endif
 
   call system("tmux send-keys -t " . s:tmux_target() . " " . a:keys)
-endfunction
-
-" Main function.
-" Use it in your script if you want to send text to a tmux session.
-function! Send_to_Tmux(text)
-  call Send_keys_to_Tmux('"'.escape(a:text, '\"$').'"')
 endfunction
 
 function! s:tmux_target()
@@ -33,8 +40,21 @@ function! s:set_tmux_buffer(text)
   call system("tmux load-buffer -", buf)
 endfunction
 
-function! SendToTmux(text)
-  call Send_to_Tmux(a:text)
+function! s:ensure_newlines(text)
+  let text = a:text
+  let trailing_newlines = matchstr(text, '\v\n*$')
+  let spaces_to_add = g:tslime_ensure_trailing_newlines - strlen(trailing_newlines)
+
+  while spaces_to_add > 0
+    let spaces_to_add -= 1
+    let text .= "\n"
+  endwhile
+
+  return text
+endfunction
+
+function! Send_to_Tmux(text)
+  call Send_keys_to_Tmux('"'.escape(s:ensure_newlines(a:text), '\"$').'"')
 endfunction
 
 " Session completion
@@ -123,9 +143,6 @@ function! s:Tmux_Vars()
   endif
 endfunction
 
-vnoremap <silent> <Plug>SendSelectionToTmux "ry :call Send_to_Tmux(@r)<CR>
-nmap     <silent> <Plug>NormalModeSendToTmux vip <Plug>SendSelectionToTmux
-
-nnoremap          <Plug>SetTmuxVars :call <SID>Tmux_Vars()<CR>
-
-command! -nargs=* Tmux call Send_to_Tmux('<Args><CR>')
+execute "vnoremap" . g:tslime_visual_mapping . ' "ry:call Send_to_Tmux(@r)<CR>'
+execute "nnoremap" . g:tslime_normal_mapping . ' vip"ry:call Send_to_Tmux(@r)<CR>'
+execute "nnoremap" . g:tslime_vars_mapping   . ' :call <SID>Tmux_Vars()<CR>'
