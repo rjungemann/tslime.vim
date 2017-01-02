@@ -1,6 +1,6 @@
 " Tslime.vim. Send portion of buffer to tmux instance
-" Maintainer: C.Coutinho <kikijump [at] gmail [dot] com>
-" Licence:    DWTFYWTPL
+" Maintainer: Roger Jungemann <roger [at] thefifthcircuit [dot] com>
+" Licence:    MIT
 
 if exists("g:loaded_tslime") && g:loaded_tslime
   finish
@@ -20,16 +20,9 @@ endif
 if !exists("g:tslime_vars_mapping")
   let g:tslime_vars_mapping = '<c-c>v'
 endif
-
-" Function to send keys to tmux
-" useful if you want to stop some command with <c-c> in tmux.
-function! Send_keys_to_Tmux(keys)
-  if !exists("g:tslime")
-    call <SID>Tmux_Vars()
-  endif
-
-  call system("tmux send-keys -t " . s:tmux_target() . " " . a:keys)
-endfunction
+if !exists("g:tslime_entire_buffer_mapping")
+  let g:tslime_entire_buffer_mapping = '<c-c>a'
+endif
 
 function! s:tmux_target()
   return '"' . g:tslime['session'] . '":' . g:tslime['window'] . "." . g:tslime['pane']
@@ -54,7 +47,28 @@ function! s:ensure_newlines(text)
 endfunction
 
 function! Send_to_Tmux(text)
-  call Send_keys_to_Tmux('"'.escape(s:ensure_newlines(a:text), '\"$').'"')
+  if !exists("g:tslime")
+    call <SID>Tmux_Vars()
+  endif
+
+  " Look, I know this is horrifying.  I'm sorry.
+  "
+  " THE PROBLEM: Certain REPLs (e.g.: SBCL) choke if you paste an assload of
+  " text into them all at once (where 'assload' is 'something more than a few
+  " hundred characters but fewer than eight thousand').  They'll seem to get out
+  " of sync with the paste, and your code gets mangled.
+  "
+  " THE SOLUTION: We paste a single line at a time, and sleep for a bit in
+  " between each one.  This gives the REPL time to process things and stay
+  " caught up.  2 milliseconds seems to be enough of a sleep to avoid breaking
+  " things and isn't too painful to sit through.
+  "
+  " This is my life.  This is computering in 2014.
+  for line in split(a:text, '\n\zs' )
+    call <SID>set_tmux_buffer(line)
+    call system("tmux paste-buffer -dpt " . s:tmux_target())
+    sleep 2m
+  endfor
 endfunction
 
 " Session completion
@@ -146,3 +160,4 @@ endfunction
 execute "vnoremap" . g:tslime_visual_mapping . ' "ry:call Send_to_Tmux(@r)<CR>'
 execute "nnoremap" . g:tslime_normal_mapping . ' vip"ry:call Send_to_Tmux(@r)<CR>'
 execute "nnoremap" . g:tslime_vars_mapping   . ' :call <SID>Tmux_Vars()<CR>'
+execute "nnoremap" . g:tslime_entire_buffer_mapping . ' maggVG$"ry:call Send_to_Tmux(@r)<CR>`a'
